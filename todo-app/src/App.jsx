@@ -2,49 +2,80 @@ import { useEffect, useState } from "react"
 import "./styles.css"
 import { NewTodoForm } from "./NewTodoForm"
 import { TodoList } from "./TodoList"
+import { db } from "./firebase";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  doc,
+  onSnapshot
+} from "firebase/firestore";
+
+function priorityValue(priority) {
+  if (priority === "High") return 3;
+  if (priority === "Medium") return 2;
+  return 1; // Low or undefined
+}
 
 export default function App() {
   // States are immutable
-  const [todos, setTodos] = useState(() => {
-    const localValue = localStorage.getItem("ITEMS")
-    if (localValue == null) return [] 
+  const [todos, setTodos] = useState([]);
 
-    return JSON.parse(localValue)
-  }) 
+  // Sort todos by date then by priority
+  const sortedTodos = [...todos].sort((a, b) => {
+    // Compare dates
+    if (a.date !== b.date) {
+      return a.date.localeCompare(b.date);
+    }
+    // compare priority
+    return priorityValue(b.priority) - priorityValue(a.priority);
+  });
 
-  // Hook
+  // // Hook
+  // useEffect(() => {
+  //   localStorage.setItem("ITEMS", JSON.stringify(todos))
+  // }, [todos])
+
+  //Firestore
+
   useEffect(() => {
-    localStorage.setItem("ITEMS", JSON.stringify(todos))
-  }, [todos])
+    const unsub = onSnapshot(collection(db, "todos"), snapshot => {
+      setTodos(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    });
+    return unsub;
+  }, []);
 
-  function addTodo(title, date, time){
-    setTodos(currentTodos => {
-      return [
-        ...currentTodos,
-        {id: crypto.randomUUID(), title, completed: false , date , time},
-      ]
-    })
+  async function addTodo(title, date, time, priority) {
+    await addDoc(collection(db, "todos"), {
+      title,
+      date,
+      time,
+      priority,
+      completed: false
+    });
   }
 
-  function toggleTodo(id, completed){
-    setTodos(currentTodos => {
-      return currentTodos.map(todo => {
-        if (todo.id == id) {
-          return {
-            ...todo, completed
-          }
-        }
-
-        return todo 
-      })
-    })
+  async function toggleTodo(id, completed) {
+  await updateDoc(doc(db, "todos", id), { completed });
   }
 
-  function deleteTodo(id){
-    setTodos(currentTodos => {
-      return currentTodos.filter(todo => todo.id !== id)
-    })
+  async function deleteTodo(id) {
+    alert("Deleting Task")
+    await deleteDoc(doc(db, "todos", id));
   }
+
+  async function saveEditTodo(id, newTitle, newDate, newTime, newPriority) {
+    await updateDoc(doc(db, "todos", id), {
+      title: newTitle,
+      date: newDate,
+      time: newTime,
+      priority: newPriority,
+      isEditing: false
+    });
+  }
+
   
   function startEditTodo(id){
     setTodos(currentTodos => {
@@ -61,22 +92,15 @@ export default function App() {
     )
   }
 
-  function saveEditTodo(id, newTitle, newDate, newTime) {
-    setTodos(currentTodos =>
-      currentTodos.map(todo =>
-        todo.id === id
-          ? { ...todo, title: newTitle, date: newDate, time: newTime, isEditing: false }
-          : todo
-      )
-    )
-  }
 
   return (
     <>
+    <div className="p-3 mb-2 bg-black text-white">
+      <h3 className="h2">TaskTracker App</h3>
+    </div>
     <NewTodoForm onSubmit={addTodo} />
-    <h1>Todo List</h1>
     <TodoList 
-      todos={todos} 
+      todos={sortedTodos} 
       toggleTodo={toggleTodo} 
       deleteTodo={deleteTodo}
       startEditTodo={startEditTodo}
